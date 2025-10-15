@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environments
+.venv
+
+# Linting and formatting
+.ruff_cache/
+
+# IDEs
+.vscode/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Documentation
+CLAUDE.md
+
+# pyenv
+.python-version
+
+# Environment variables
+.env
+.env.local
