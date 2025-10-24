@@ -44,7 +44,7 @@ class MCPClient:
         self.command = command
         self.server_args = server_args
         self.env_vars = env_vars
-        self._session: ClientSession | None = None
+        self._session: ClientSession | None = None  # Access session functions like get_tools
         self._exit_stack: AsyncExitStack = AsyncExitStack()
         self._connected: bool = False
 

@@ -301,7 +301,7 @@ class MCPClient:
 
         # Request the prompt from the server
         prompt_result = await self._session.get_prompt(
-            name=name, arguments=arguments or {}
+            name=name, arguments=arguments
         )
 
         if not prompt_result.messages:
