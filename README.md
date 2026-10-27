@@ -42,7 +42,7 @@ uv run python check_setup.py
 ```
 making-intelligent-apps-agentic/
 ├── 00_base_application/       # Simple chat agent (baseline)
-├── 01_create_client_module/   # MCP client connect/disconnect (live-coded)
+├── 01_create_client_module/   # MCP client connect/disconnect (walkthrough)
 ├── 02_supporting_tools/       # EXERCISE: tools, errors, resource links
 │   ├── starter/               #   code with TODOs
 │   └── solution/              #   finished code
@@ -117,7 +117,7 @@ uv run python 00_base_application/agent.py
 ```
 
 ### Step 1: Create Client Module
-The presenter live-codes `MCPClient`. It keeps a `connect()`/`disconnect()` design with an `AsyncExitStack`. `connect()` builds an SDK `Client` from `StdioServerParameters` and enters it on the exit stack. In v2 there is no `initialize()` call and no read/write streams.
+The presenter walks through `MCPClient`. It keeps a `connect()`/`disconnect()` design with an `AsyncExitStack`. `connect()` builds an SDK `Client` from `StdioServerParameters` and enters it on the exit stack. In v2 there is no `initialize()` call and no read/write streams.
 ```bash
 uv run python 01_create_client_module/agent.py
 ```
