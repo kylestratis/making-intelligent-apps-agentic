@@ -1,327 +1,195 @@
 # Making Apps Intelligent: Building MCP Clients
 
-A hands-on workshop that teaches you how to build Model Context Protocol (MCP) clients by progressively enhancing a simple chat application. Learn how to integrate tools, resources, and prompts to create intelligent applications that can interact with external systems.
+A hands-on workshop that teaches you how to build Model Context Protocol (MCP) clients by progressively enhancing a simple chat application. It uses the **MCP Python SDK v2** (`mcp` 2.3.0, protocol spec 2026-07-28) and Claude (`claude-sonnet-5-5`).
 
 ## What You'll Learn
 
-This workshop demonstrates how to transform a basic Claude chat agent into a full-featured MCP client that can:
-- Connect to MCP servers via stdio
-- Discover and use server-provided tools
-- Load and inject contextual resources
-- Apply prompt templates for behavior guidance
-- Implement the agentic loop pattern
+You will turn a basic Claude chat agent into an MCP client that can:
+- Connect to MCP servers over stdio and over HTTP
+- Discover and call server-provided tools, and handle tool errors
+- Load resources and follow resource links
+- Run server prompt templates as part of the conversation
+- Answer server requests for user input (elicitation) and share roots
 
-## Prerequisites
+## Setup
 
-- Python 3.12 or higher
-- An Anthropic API key ([get one here](https://console.anthropic.com/settings/keys))
-- Basic familiarity with Python and async/await
-
-## Installation
-
-### 1. Install uv
-
-This project uses [uv](https://github.com/astral-sh/uv) for fast, reliable Python dependency management.
+You need Python 3.12+, an Anthropic API key ([get one here](https://console.anthropic.com/settings/keys)), and basic familiarity with Python and async/await.
 
 ```bash
-# macOS/Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# 1. Install uv (https://docs.astral.sh/uv/)
+curl -LsSf https://astral.sh/uv/install.sh | sh      # macOS/Linux
+# powershell -c "irm https://astral.sh/uv/install.ps1 | iex"   # Windows
 
-# Windows
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Or with pip
-pip install uv
-```
-
-### 2. Clone the Repository
-
-```bash
+# 2. Clone and install dependencies
 git clone <repository-url>
-cd making-apps-intelligent
-```
-
-### 3. Install Dependencies
-
-```bash
+cd making-intelligent-apps-agentic
 uv sync
-```
 
-### 4. Configure Your API Key
-
-```bash
-# Copy the example environment file
+# 3. Add your API key
 cp .env.example .env
+# edit .env and set ANTHROPIC_API_KEY=...
 
-# Edit .env and add your Anthropic API key
-# ANTHROPIC_API_KEY=your_api_key_here
+# 4. Verify everything works
+uv run python check_setup.py
 ```
+
+`check_setup.py` prints a PASS or FAIL line for the Python version, uv, the dependencies, your API key (presence only, never the value), and whether the example server starts.
+
+**No local setup?** Open the repo in GitHub Codespaces or a VS Code dev container. `.devcontainer/devcontainer.json` installs Python 3.12 and uv and runs `uv sync`. You still need to put your key in `.env`.
 
 ## Repository Structure
 
-The workshop is organized into progressive steps, each building on the previous one:
-
 ```
-making-apps-intelligent/
+making-intelligent-apps-agentic/
 ├── 00_base_application/       # Simple chat agent (baseline)
-├── 01_create_client_module/   # MCP client with connection lifecycle
-├── 02_supporting_tools/       # Tool discovery and execution
-├── 03_supporting_resources/   # Resource loading and context injection
-├── 04_supporting_prompts/     # Prompt templates and complete integration
-├── calculator_server.py       # Example MCP server for testing
-├── pyproject.toml             # Project dependencies
-└── .env.example               # API key template
+├── 01_create_client_module/   # MCP client connect/disconnect (live-coded)
+├── 02_supporting_tools/       # EXERCISE: tools, errors, resource links
+│   ├── starter/               #   code with TODOs
+│   └── solution/              #   finished code
+├── 03_supporting_resources/   # EXERCISE: resources and following links
+├── 04_supporting_prompts/     # EXERCISE: prompts as conversation messages
+├── 05_elicitation/            # EXERCISE: elicitation callback (+ roots)
+├── 06_remote_servers/         # Connect to a server over HTTP
+├── tests/                     # One test file per exercise (no API key needed)
+├── calculator_server.py       # Example MCP server
+├── check_setup.py             # Setup checker
+├── .devcontainer/             # Codespaces / dev container fallback
+└── pyproject.toml             # Pinned dependencies
 ```
 
-## About the Example Server
+## The Example Server
 
-The `calculator_server.py` is a simple MCP server that provides:
+`calculator_server.py` is built with `MCPServer` from the v2 SDK.
 
-- **Tools**: Mathematical operations (add, subtract, multiply, divide)
-- **Resources**: Math constants (pi, e, golden ratio) and formulas
-- **Prompts**: Templates for step-by-step problem solving
+**Tools**
+| Tool | What it does |
+| --- | --- |
+| `add`, `subtract`, `multiply` | Basic arithmetic |
+| `divide` | Division. Dividing by zero returns an error result (`is_error=True`) |
+| `power`, `square_root` | Exponent and root (negative roots are errors) |
+| `count_rs` | Count the letter "R" in a string |
+| `get_constants_reference` | Returns a **resource link** to `resource://math-constants` |
+| `signup_math_facts` | Asks you for your name and email (**elicitation**) |
+| `count_files` | Counts entries in a directory inside the client's **roots** |
 
-This server allows you to test all MCP client functionality without needing external services.
+**Resource:** `resource://math-constants` (pi, e, the golden ratio, and more).
+**Prompt:** `calculate_operation` (takes an `operation` argument).
+
+By default the client starts the server for you over stdio. To run it as an HTTP server instead:
+
+```bash
+uv run python calculator_server.py --http     # serves http://localhost:8000/mcp
+```
+
+## How the Exercises Work
+
+Steps 02 to 05 are exercises. Each has two folders:
+
+- `starter/`: working code with `TODO` stubs. The docstring of each stub says what to implement. The starter already contains the finished code of the previous step, so every exercise starts from a known-good base.
+- `solution/`: the finished code for that step.
+
+**Workflow**
+1. Open `NN_step/starter/client.py` and find the `TODO` markers.
+2. Implement them. Run your agent: `uv run python NN_step/starter/agent.py`.
+3. Check your work with the tests (below).
+4. Stuck, or behind the group? Copy the solution over your file, for example `cp 02_supporting_tools/solution/client.py 02_supporting_tools/starter/client.py`. To catch up to step N, start step N from its own `starter/` (it includes the previous step's solution), or copy the previous step's `solution/` files into the current step's `starter/`.
+
+### Tests
+
+The tests need no API key. They call `MCPClient` methods directly against `calculator_server.py`.
+
+```bash
+uv run pytest                                  # run against the solutions (all pass)
+WORKSHOP_VARIANT=starter uv run pytest         # run against your starter code
+WORKSHOP_VARIANT=starter uv run pytest tests/test_02_tools.py   # one step
+```
+
+Unfinished TODOs fail with `NotImplementedError` or a clear assertion message.
 
 ---
 
 ## Workshop Steps
 
 ### Step 0: Base Application
-
-**What's New:**
-- Simple CLI chat interface
-- Conversation history management
-- Basic Claude API integration
-
-**Concepts Implemented:**
-- Synchronous message exchange with Claude
-- User input/output handling
-- Conversation context maintenance
-
-**How to Run:**
+A plain chat loop with conversation history and no tools.
 ```bash
 uv run python 00_base_application/agent.py
 ```
 
-**Example Queries to Try:**
-```
-You: Hello! How are you?
-You: What is the capital of France?
-You: Can you explain what gravity is?
-```
-
-**What to Notice:**
-- The agent maintains conversation history
-- No access to tools or external knowledge
-- Simple request/response pattern
-
----
-
 ### Step 1: Create Client Module
-
-**What's New:**
-- `MCPClient` class with connection management
-- Async/await pattern implementation
-- Stdio server connection setup
-
-**Concepts Implemented:**
-- MCP client initialization and lifecycle
-- AsyncExitStack for resource cleanup
-- Subprocess-based server communication
-- Session handshake and initialization
-
-**How to Run:**
+The presenter live-codes `MCPClient`. It keeps a `connect()`/`disconnect()` design with an `AsyncExitStack`. `connect()` builds an SDK `Client` from `StdioServerParameters` and enters it on the exit stack. In v2 there is no `initialize()` call and no read/write streams.
 ```bash
 uv run python 01_create_client_module/agent.py
 ```
 
-**Example Queries to Try:**
-```
-You: Hello! Can you help me with math?
-You: What can you do?
-```
+### Step 2: Supporting Tools (exercise)
+Add `get_available_tools()` and `use_tool()` and the agentic loop. `use_tool` returns `{"content": [...], "is_error": bool}`.
+- **TODO (a):** pass the server's `is_error` through, so Claude knows a call failed.
+- **TODO (b):** handle `resource_link` results by returning the link's name and URI as text.
 
-**What to Notice:**
-- Application converts to async (asyncio.run)
-- Client connects to calculator server on startup
-- Graceful disconnect on exit
-- No functional difference yet - tools not used
-
----
-
-### Step 2: Supporting Tools
-
-**What's New:**
-- `get_available_tools()` - Discover server capabilities
-- `use_tool()` - Execute tools and handle results
-- Agentic loop pattern implementation
-
-**Concepts Implemented:**
-- Tool discovery and formatting for Claude API
-- Tool execution via MCP protocol
-- Agentic loop (Claude decides when to use tools)
-- Multi-turn tool use conversations
-- Content type handling (text, images, resources)
-
-**How to Run:**
 ```bash
-uv run python 02_supporting_tools/agent.py
+uv run python 02_supporting_tools/starter/agent.py
 ```
+Try: `What is 25 times 17?`, `What is 1 divided by 0?`, `Give me the math constants reference.`
 
-**Example Queries to Try:**
-```
-You: What is 25 multiplied by 17?
-You: Calculate (45 + 67) * 3
-You: If I have 1000 dollars and spend 234, how much is left?
-You: What's 15 divided by 3, then add 10?
-```
+### Step 3: Supporting Resources (exercise)
+- **TODO:** `get_resource(uri)` wraps `read_resource` and returns text/blob contents.
+- **TODO:** make `use_tool` follow `resource_link` results by loading them through `get_resource`.
 
-**What to Notice:**
-- Server tools are displayed on startup
-- `[Using tool: ...]` messages show tool execution
-- Claude decides when tools are needed
-- Multiple tools can be used in sequence
-- Results are integrated into Claude's response
-
----
-
-### Step 3: Supporting Resources
-
-**What's New:**
-- `get_available_resources()` - List available data
-- `get_resource(uri)` - Fetch resource content
-- Resource context injection pattern
-
-**Concepts Implemented:**
-- Resource discovery and metadata retrieval
-- URI-based resource access
-- Context injection into user messages
-- Multi-modal content (text and images)
-- Difference between tools (agentic) and resources (context)
-
-**How to Run:**
+The agent still loads all resources as context on every turn.
 ```bash
-uv run python 03_supporting_resources/agent.py
+uv run python 03_supporting_resources/starter/agent.py
 ```
+Try: `What is the golden ratio?`, `Give me the math constants reference.`
 
-**Example Queries to Try:**
-```
-You: What is the value of pi?
-You: Tell me about the golden ratio
-You: What's the quadratic formula?
-You: How does Euler's number relate to compound interest?
-```
+### Step 4: Supporting Prompts (exercise)
+- **TODO:** `load_prompt(name, arguments)` wraps `get_prompt` and turns each `PromptMessage` into an Anthropic message dict.
 
-**What to Notice:**
-- Resources are loaded before each query
-- `[Loading resource: ...]` messages show what's loaded
-- Claude has access to math constants and formulas
-- Resources provide background knowledge
-- Can answer questions about resource content without tool use
-
----
-
-### Step 4: Supporting Prompts
-
-**What's New:**
-- `get_available_prompts()` - List prompt templates
-- `load_prompt(name, arguments)` - Fetch and render prompts
-- Complete integration of all three MCP primitives
-
-**Concepts Implemented:**
-- Prompt template discovery
-- Parameterized prompt loading
-- Prompts as system instructions
-- Three MCP primitive types working together:
-  - **Tools**: Agentic execution (Claude decides when)
-  - **Resources**: Background context (pre-loaded)
-  - **Prompts**: Behavior guidance (system instructions)
-
-**How to Run:**
+The agent gets two commands: `/prompts` lists templates, and `/prompt <name>` asks for each argument and adds the rendered messages to the conversation (with their roles, not as a system prompt).
 ```bash
-uv run python 04_supporting_prompts/agent.py
+uv run python 04_supporting_prompts/starter/agent.py
 ```
+Try: `/prompts`, then `/prompt calculate_operation` and enter `(3 + 4) * 12`.
 
-**Example Queries to Try:**
-```
-You: What is 156 times 23?
-You: Calculate the area of a circle with radius 5
-You: Solve: 2x + 5 = 13
-You: What's the difference between pi and e?
-You: Help me solve: (3 + 4) * (10 - 2)
-```
+### Step 5: Elicitation (exercise)
+Servers can ask the user for input in the middle of a tool call. With protocol 2026-07-28 the server replies `input_required`, and the SDK `Client` calls your callback and retries the call for you.
+- **TODO:** `handle_elicitation(context, params)` prints the server's message, prompts for each requested field, and returns `ElicitResult(action="accept", content=...)`, or `"decline"` on empty input.
 
-**What to Notice:**
-- All server capabilities displayed on startup
-- `[Loading prompt: ...]` shows prompt usage
-- Prompts guide how Claude approaches problems
-- Complete integration: prompts guide, resources inform, tools execute
-- Claude can combine all three for complex queries
+It is passed to `Client(..., elicitation_callback=...)`. A silent `list_roots_callback` is already registered, so `count_files` works.
+```bash
+uv run python 05_elicitation/starter/agent.py
+```
+Try: `Sign me up for math facts.` and `How many files are in <path to this repo>?`
+
+### Step 6: Remote Servers
+`MCPClient` accepts either `command`/`server_args` or a `url`. `connect()` branches to `Client(url)`. Nothing else changes.
+```bash
+# terminal 1
+uv run python calculator_server.py --http
+# terminal 2
+uv run python 06_remote_servers/agent.py --url http://localhost:8000/mcp
+```
+Without `--url` it starts the server over stdio, like step 05.
 
 ---
 
 ## Understanding MCP Primitives
 
-### Tools
-**When to Use:** For actions and computations
-- Claude decides when to execute them
-- Used dynamically during conversation
-- Examples: Calculator functions, API calls, file operations
-
-### Resources
-**When to Use:** For background information
-- Pre-loaded before sending message
-- Provide context that's always available
-- Examples: Documentation, constants, configuration data
-
-### Prompts
-**When to Use:** For behavior guidance
-- Define how the assistant should behave
-- Can be parameterized for different scenarios
-- Examples: Tone settings, response formats, domain expertise
-
-## Next Steps
-
-After completing this workshop, you can:
-
-1. **Connect to Existing Servers**
-   - Explore the [MCP Servers Repository](https://github.com/modelcontextprotocol/servers)
-   - Connect to databases, APIs, and file systems
-   - Combine multiple servers in one client
-
-2. **Enhance the Client**
-   - Add intelligent resource selection
-   - Implement prompt switching based on context
-   - Add support for streaming responses
-   - Build a more sophisticated UI
-   - Connect to the new MCP registry
-   - Build client-provided capabilities, like roots and elicitations. The test server can use them as-is.
+- **Tools**: actions Claude chooses to run. Failures come back with `is_error=True`.
+- **Resources**: data the client chooses to load as context. Tools can also return links to them.
+- **Prompts**: templates the user picks, rendered into conversation messages.
+- **Elicitation and roots**: things the *client* provides to the server (user input and file access).
 
 ## Troubleshooting
 
-### "ANTHROPIC_API_KEY not set" error
-Make sure you've created a `.env` file with your API key:
-```bash
-cp .env.example .env
-# Edit .env and add: ANTHROPIC_API_KEY=your_actual_key
-```
-
-### Import errors or missing dependencies
-Reinstall dependencies:
-```bash
-uv sync --force
-```
-
-### Calculator server not connecting
-The server is started automatically by the client. If you see connection errors:
-1. Ensure `calculator_server.py` exists in the project root
-2. Check that uv can run Python scripts: `uv run python --version`
+- **"ANTHROPIC_API_KEY not set"**: create `.env` with `cp .env.example .env` and add your key. `uv run python check_setup.py` tells you what is missing.
+- **Import errors**: run `uv sync --reinstall`.
+- **Server won't connect**: run `uv run python check_setup.py`; it starts the server and lists its tools.
+- **Port 8000 busy** (step 6 and `test_06_remote.py`): stop whatever is using it.
 
 ## Resources
 
-- [MCP Documentation](https://modelcontextprotocol.io)
-- [Anthropic API Documentation](https://docs.anthropic.com)
-- [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
-- [MCP Specification](https://spec.modelcontextprotocol.io)
-- [AI Agents with Model Context Protocol](https://learning.oreilly.com/library/view/ai-agents-with/9798341639546)
+- [MCP Python SDK docs (v2)](https://py.sdk.modelcontextprotocol.io)
+- [Build an MCP client tutorial](https://modelcontextprotocol.io/docs/develop/build-client)
+- [MCP specification](https://modelcontextprotocol.io/specification)
+- [Anthropic API documentation](https://docs.anthropic.com)

@@ -50,27 +50,33 @@ def main():
             continue
 
         # Add user message to conversation history
-        conversation_history.append({
-            "role": "user",
-            "content": user_input,
-        })
+        conversation_history.append(
+            {
+                "role": "user",
+                "content": user_input,
+            }
+        )
 
         # Call Claude API with conversation history
         response = client.messages.create(
-            model="claude-sonnet-4-5-20250929",
-            max_tokens=1024,
+            model="claude-sonnet-5-5",
+            max_tokens=4096,
             system=system_prompt,
             messages=conversation_history,
         )
 
-        # Extract assistant's response
-        assistant_message = response.content[0].text
+        # Extract the text block (Sonnet 5.5 may also return an empty thinking block)
+        assistant_message = next(
+            block.text for block in response.content if block.type == "text"
+        )
 
         # Add assistant's response to conversation history
-        conversation_history.append({
-            "role": "assistant",
-            "content": assistant_message,
-        })
+        conversation_history.append(
+            {
+                "role": "assistant",
+                "content": assistant_message,
+            }
+        )
 
         # Display the response
         print(f"\nAssistant: {assistant_message}\n")

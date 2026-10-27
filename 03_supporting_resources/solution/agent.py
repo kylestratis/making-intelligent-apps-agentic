@@ -1,8 +1,8 @@
-"""CLI chat agent with MCP tool use capability.
+"""CLI chat agent with MCP tool and resource support.
 
-This demonstrates an intelligent application that can discover and use tools
-from an MCP server. The agent implements an agentic loop where Claude can
-use tools multiple times and reason about the results before responding.
+This demonstrates an intelligent application that can both use tools and
+inject resource context into conversations. Resources provide background
+information that helps Claude answer questions more effectively.
 """
 
 import asyncio
@@ -12,13 +12,59 @@ from pathlib import Path
 from anthropic import Anthropic
 from client import MCPClient
 from dotenv import load_dotenv
+from mcp import MCPError
+from mcp.types import TextResourceContents
 
 # Load environment variables from .env file
 load_dotenv()
 
 
+async def load_resource_context(
+    mcp_client: MCPClient, resource_uris: list[str]
+) -> list[dict]:
+    """Load resource contents and format them for Claude's API.
+
+    Args:
+        mcp_client: The MCP client instance.
+        resource_uris: List of resource URIs to load.
+
+    Returns:
+        List of formatted content blocks (text or images) ready for Claude.
+    """
+    context_blocks = []
+
+    for uri in resource_uris:
+        try:
+            print(f"  [Loading resource: {uri}]")
+            resource_contents = await mcp_client.get_resource(uri)
+
+            for content in resource_contents:
+                if isinstance(content, TextResourceContents):
+                    context_blocks.append(
+                        {"type": "text", "text": f"[Resource: {uri}]\n{content.text}"}
+                    )
+                elif content.mime_type and content.mime_type.startswith("image/"):
+                    context_blocks.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": content.mime_type,
+                                "data": content.blob,
+                            },
+                        }
+                    )
+                else:
+                    print(f"  [Warning: Unsupported content type {content.mime_type}]")
+
+        except MCPError as e:
+            print(f"  [Error loading resource {uri}: {e}]")
+
+    return context_blocks
+
+
 async def main():
-    """Run the interactive chat agent with MCP tool support."""
+    """Run the interactive chat agent with MCP tool and resource support."""
     # Initialize the Anthropic client
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -35,21 +81,24 @@ async def main():
         command="uv",
         server_args=[
             "--directory",
-            str(Path(__file__).parent.parent.resolve()),
+            str(Path(__file__).parents[2].resolve()),
             "run",
             "calculator_server.py",
         ],
     )
 
-    # Connect to the MCP server and get available tools
+    # Connect to the MCP server and discover capabilities
     await mcp_client.connect()
     available_tools = await mcp_client.get_available_tools()
+    available_resources = await mcp_client.get_available_resources()
 
-    # Display available tools to the user
+    # Display server capabilities to the user
     tool_names = [tool["name"] for tool in available_tools]
-    print(f"Connected to MCP server with tools: {', '.join(tool_names)}\n")
+    print("Connected to MCP server")
+    print(f"  Tools: {', '.join(tool_names)}")
+    print(f"  Resources: {', '.join(r.name for r in available_resources) or 'none'}\n")
 
-    print("Welcome to your AI Assistant with tool support!")
+    print("Welcome to your AI Assistant with tools and resources!")
     print("Type your message and press Enter to chat.")
     print("Type 'quit' or 'exit' to end the conversation.\n")
 
@@ -67,17 +116,24 @@ async def main():
             if not user_input:
                 continue
 
-            # Start a new conversation for this user message
-            # Note: For simplicity, we're not maintaining history between messages
-            # A more advanced version would maintain full conversation history
-            conversation_messages = [{"role": "user", "content": user_input}]
+            # Each user message starts a new conversation (no history is kept).
+            # Resources are loaded as extra context in the user message.
+            # For simplicity we load all of them; a smarter client would select.
+            user_content = [{"type": "text", "text": user_input}]
+            if available_resources:
+                user_content.extend(
+                    await load_resource_context(
+                        mcp_client, [r.uri for r in available_resources]
+                    )
+                )
+            conversation_messages = [{"role": "user", "content": user_content}]
 
             # Agentic loop - continue until we get a final text response
             # This allows Claude to use multiple tools and reason about results
             while True:
                 # Call Claude API with available tools
                 response = client.messages.create(
-                    model="claude-sonnet-4-5-20250929",
+                    model="claude-sonnet-5-5",
                     max_tokens=4096,
                     messages=conversation_messages,
                     tools=available_tools,
@@ -106,18 +162,22 @@ async def main():
                             tool_name=tool_use.name, arguments=tool_use.input
                         )
 
-                        # Format result for Claude
+                        # Format result for Claude; is_error tells the model
+                        # the call failed so it can recover or explain
                         tool_results.append(
                             {
                                 "type": "tool_result",
                                 "tool_use_id": tool_use.id,
-                                "content": "\n".join(tool_result),
+                                "content": "\n".join(tool_result["content"]),
+                                "is_error": tool_result["is_error"],
                             }
                         )
 
                     # Add tool results to conversation as a user message
                     # This allows Claude to see the results and continue reasoning
-                    conversation_messages.append({"role": "user", "content": tool_results})
+                    conversation_messages.append(
+                        {"role": "user", "content": tool_results}
+                    )
 
                     # Continue the loop - Claude will process results
                     continue
@@ -125,9 +185,9 @@ async def main():
                 else:
                     # No more tool use - extract final text response
                     text_blocks = [
-                        content.text
-                        for content in response.content
-                        if hasattr(content, "text") and content.text.strip()
+                        block.text
+                        for block in response.content
+                        if block.type == "text" and block.text.strip()
                     ]
 
                     if text_blocks:
